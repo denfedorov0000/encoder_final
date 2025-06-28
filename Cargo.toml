@@ -1,0 +1,10 @@
+[package]
+name = "encoder"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+num-bigint = "0.4"
+num-traits = "0.2"
+base64 = "0.13"
+rand = "0.8"
