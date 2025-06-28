@@ -3,3 +3,5 @@ Feel fee to use in your projects ;)
 Hope it would be useful for data transfer and storage
 
 Desingned for Лаборатория системных технологий
+
+To run project you may download zipped binary and run it linux console.
