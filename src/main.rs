@@ -1,7 +1,7 @@
 // main.rs
 // Тестовое задание Фёдоров Денис Г. email: denfedorov@mail.ru,denfedorov0000@yandex.ru
 
-// Компактная сереализация/десереализация списка чисел в строку base64
+// Компактная сериализация/десериализация списка чисел в строку base64
 // Идея алгоритма - превратить список чисел в длинное целое с подсчетом повторений
 // одного числа (предварительно отсортировав входные значения) - порядок чисел не учитывается
 // Для этого используем упаковку значений и вычисление специального полинома с применением
@@ -18,13 +18,14 @@ use rand::seq::SliceRandom;
 use std::time::Instant;
 //use rand::prelude::IteratorRandom;
 
-// Базовое значение для чисел в списке
+//Максимальное значение для чисел в списке
 const VAL_BASE: u32 = 300;
 // Максимальное количество повторений одного числа
 const REPEAT_MAX_COUNT: u32 = 1000;
 // Общая база степеней полинома для кодирования (VAL_BASE + REPEAT_MAX_COUNT + 1)
 const BASE: u32 = VAL_BASE + REPEAT_MAX_COUNT + 1;
 
+// Сериализует список чисел в строку base64
 // Сериализует список чисел в строку base64
 fn serialize_list(numbers_: &[u32]) -> String {
     let mut numbers = numbers_.to_vec();
@@ -34,7 +35,7 @@ fn serialize_list(numbers_: &[u32]) -> String {
     let mut polynomial = BigUint::zero();
     let mut powerbase: BigUint = BigUint::one();
 
-    let mut count: u32 = 0;
+    let mut count: u32 = 1;
     let mut old_num: u32 = 0;
 
     for num in numbers {
@@ -44,23 +45,24 @@ fn serialize_list(numbers_: &[u32]) -> String {
         if count > REPEAT_MAX_COUNT {
             panic!("Количество повторяющихся чисел превышает допустимое значение");
         }
-        count +=1;
-        if count > 0 && num == old_num {
+
+        if num == old_num {
             count +=1;
-            continue;
         }
         else
         {
             // Упаковываем число и количество повторений в одно значение
             let packed_num = num + (count) * (VAL_BASE+1);
+            // Добавляем число в полином
             polynomial += powerbase.clone() * BigUint::from(packed_num);
             powerbase *= BigUint::from(BASE);
 
-            count = 0;
+            count = 1;
             old_num = 0;
+            continue;
         }
+        old_num = num;
     }
-
     // Переводим результат в байты и кодируем в base64
     let bytes = polynomial.to_bytes_be();
     base64::encode(&bytes)
