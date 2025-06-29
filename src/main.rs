@@ -1,13 +1,14 @@
 // main.rs
 // Тестовое задание Фёдоров Денис Г. email: denfedorov@mail.ru,denfedorov0000@yandex.ru
 
-// Компактная сериализация/десериализация списка чисел в строку base64
+// Компактная сереализация/десереализация списка чисел в строку base64
 // Идея алгоритма - превратить список чисел в длинное целое с подсчетом повторений
 // одного числа (предварительно отсортировав входные значения) - порядок чисел не учитывается
 // Для этого используем упаковку значений и вычисление специального полинома с применением
 // длинной целочисленной арифметики, далее применяем преобразование в строку base64
-// Десериализация реализована обратным алгоритмом
+// Десереализация реализована обратным алгоритмом
 // При старте программа запускает набор рекомендованных тестов выводя результаты на экран
+// release версия работает в десятки раз быстрее и в 10 раз меньше в обьеме.
 
 use num_bigint::BigUint;
 use num_traits::{One, Zero, Euclid};
@@ -43,18 +44,20 @@ fn serialize_list(numbers_: &[u32]) -> String {
         if count > REPEAT_MAX_COUNT {
             panic!("Количество повторяющихся чисел превышает допустимое значение");
         }
-
-        if num == old_num && count > 0 {
-            count += 1;
+        count +=1;
+        if count > 0 && num == old_num {
+            count +=1;
             continue;
-        } else {
-            count = 0;
-            old_num = num;
-
+        }
+        else
+        {
             // Упаковываем число и количество повторений в одно значение
             let packed_num = num + (count) * (VAL_BASE+1);
             polynomial += powerbase.clone() * BigUint::from(packed_num);
             powerbase *= BigUint::from(BASE);
+
+            count = 0;
+            old_num = 0;
         }
     }
 
@@ -77,7 +80,7 @@ fn deserialize_list(encoded: &str) -> Vec<u32> {
 
         // Извлекаем исходное число и количество повторений
         let num = packed_num % (VAL_BASE+1);
-        let count = (packed_num / (VAL_BASE+1)) + 1;
+        let count = packed_num / (VAL_BASE+1);
 
         if num < 1 || num > VAL_BASE {
             panic!("Некорректное значение коэффициента");
@@ -150,7 +153,7 @@ fn test_random_lists(size: usize) -> (Vec<u32>, Vec<u32>, bool) {
     let pool: Vec<u32> = (1..=VAL_BASE).collect();
     let mut input: Vec<u32> = Vec::<u32>::new();
 
-    let range = (1..=size);
+    let range = 1..=size;
     range.for_each(|_|{ input.push(pool.choose(&mut rng).unwrap().to_u32().expect("REASON")); } );
 
     let encoded = serialize_list(&input);
