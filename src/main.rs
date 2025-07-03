@@ -1,211 +1,281 @@
-// main.rs
-// Тестовое задание Фёдоров Денис Г. email: denfedorov@mail.ru,denfedorov0000@yandex.ru
-
-// Компактная сериализация/десериализация списка чисел в строку base64
-// Идея алгоритма - превратить список чисел в длинное целое с подсчетом повторений
-// одного числа (предварительно отсортировав входные значения) - порядок чисел не учитывается
-// Для этого используем упаковку значений и вычисление специального полинома с применением
-// длинной целочисленной арифметики, далее применяем преобразование в строку base64
-// Десериализация производится обратным алгоритмом
-// При старте программа запускает набор рекомендованных тестов выводя результаты на экран
-// release версия работает в десятки раз быстрее и в 10 раз меньше в обьеме.
-
 use num_bigint::BigUint;
-use num_traits::{One, Zero, Euclid};
-use num_traits::ToPrimitive;
+use num_traits::{One, Zero, Euclid, ToPrimitive};
 use base64;
 use rand::seq::SliceRandom;
 use std::time::Instant;
-//use rand::prelude::IteratorRandom;
+//use std::panic::{self, UnwindSafe};
 
-//Максимальное значение для чисел в списке
-const VAL_BASE: u32 = 300;
+// Максимальное значение для чисел в списке (тесты)
+const VAL_BASE: u16 = 300;
+// Максимальное значение для заголовка
+const HEADER_BASE: u32 = 1 << 32 - 1;
 // Максимальное количество повторений одного числа
-const REPEAT_MAX_COUNT: u32 = 1000;
-// Общая база степеней полинома для кодирования (VAL_BASE + REPEAT_MAX_COUNT + 1)
-const BASE: u32 = VAL_BASE + REPEAT_MAX_COUNT + 1;
+const REPEAT_MAX_COUNT: u16 = 60000;
+// Максимальное значение числа в списке
+const MAX_NUM: u16 = 65500;
+
+// Вычисляет максимальное число в списке
+fn max_num(numbers: &Vec<u16>) -> u16 {
+    *numbers.iter().max().unwrap_or(&0)
+}
+
+// Вычисляет максимальное количество повторяющихся чисел в отсортированном списке
+fn max_repeats_in_sorted(numbers: &Vec<u16>) -> u16 {
+    let mut max_count = 1;
+    let mut current_count = 1;
+    let mut old_num = numbers[0];
+
+    for num in numbers.iter().skip(1) {
+        if *num == old_num {
+            current_count += 1;
+            if current_count > max_count {
+                max_count = current_count;
+            }
+            if current_count > REPEAT_MAX_COUNT {
+                panic!("Количество повторяющихся чисел превышает допустимое значение");
+            }
+        } else {
+            current_count = 1;
+        }
+        old_num = *num;
+    }
+    max_count
+}
+
+// Возвращает базу для полинома кодирования
+fn base(max_val: u16, max_repeats: u16) -> u32 {
+    (max_val as u32 + 1) * (max_repeats as u32 + 1) + 1
+}
+
+fn pack(num: u16, count: u16, max_num: u16) -> u32 {
+    (num as u32) + (count as u32) * (max_num as u32 + 1)
+}
+
+fn unpack(packed: u32, max_num: u16) -> (u16, u16) {
+    let num = packed % (max_num as u32 + 1);
+    let count = packed / (max_num as u32 + 1);
+    (num as u16, count as u16)
+}
 
 // Сериализует список чисел в строку base64
-// Сериализует список чисел в строку base64
-fn serialize_list(numbers_: &[u32]) -> String {
+fn serialize_list(numbers_: &[u16]) -> String {
     let mut numbers = numbers_.to_vec();
     numbers.sort();
     numbers.reverse();
 
+    let max_num = max_num(&numbers);
+    let max_repeats = max_repeats_in_sorted(&numbers);
+
     let mut polynomial = BigUint::zero();
     let mut powerbase: BigUint = BigUint::one();
 
-    let mut count: u32 = 1;
-    let mut old_num: u32 = 0;
+    let mut count: u16 = 1;
+    let mut old_num: u16 = 0;
 
-    for num in numbers {
-        if num < 1 || num > VAL_BASE {
+    let packed_header = (max_num as u32) + ((max_repeats as u32) << 16);
+
+    // Добавляем заголовок в полином
+    polynomial += &powerbase * BigUint::from(packed_header);
+    powerbase *= BigUint::from(HEADER_BASE);
+
+    if !numbers.is_empty() {
+        old_num = numbers[0];
+    }
+
+    let v_base = base(max_num, max_repeats);
+    //println!("se v_base {}",v_base);
+
+    for num in numbers.iter().skip(1) {
+        if *num < 1 || *num > MAX_NUM {
             panic!("Число выходит за допустимый диапазон");
         }
         if count > REPEAT_MAX_COUNT {
             panic!("Количество повторяющихся чисел превышает допустимое значение");
         }
 
-        if num == old_num {
-            count +=1;
-        }
-        else
-        {
-            // Упаковываем число и количество повторений в одно значение
-            let packed_num = num + (count) * (VAL_BASE+1);
-            // Добавляем число в полином
-            polynomial += powerbase.clone() * BigUint::from(packed_num);
-            powerbase *= BigUint::from(BASE);
+        if *num == old_num {
+            count += 1;
+        } else {
+            //println!("{} {},",count,old_num);
+            polynomial += &powerbase * BigUint::from( pack(old_num, count, max_num) );
+            powerbase *= BigUint::from(v_base);
 
             count = 1;
-            old_num = 0;
-            continue;
         }
-        old_num = num;
+        old_num = *num;
     }
-    // Переводим результат в байты и кодируем в base64
+
+    if !numbers.is_empty() {
+        //println!("{} {},",count,old_num);
+        polynomial += &powerbase * BigUint::from( pack(old_num, count, max_num) );
+    }
+        
+    //println!("{}",polynomial.to_string());
+
     let bytes = polynomial.to_bytes_be();
     base64::encode(&bytes)
 }
 
 // Десериализует строку base64 обратно в список чисел
-fn deserialize_list(encoded: &str) -> Vec<u32> {
-    let bytes = base64::decode(encoded).expect("Некорректное base64-представление");
+fn deserialize_list(encoded: &String) -> Result<Vec<u16>, String> {
+    //println!("___ {}",encoded);
+
+    let bytes = base64::decode(encoded).map_err(|e| format!("Некорректное base64-представление: {}", e))?;
     let mut polynomial = BigUint::from_bytes_be(&bytes);
 
-    let base = BigUint::from(BASE);
+    println!("{}",polynomial.to_string());
+
+    // Извлекаем заголовок
+    let (s_quotient, s_remainder) = polynomial.div_rem_euclid(&BigUint::from(HEADER_BASE));
+    let packed_header = s_remainder.to_u32().ok_or("Ошибка при извлечении заголовка")?;
+
+    let max_num = (packed_header % (1 << 16)).to_u16().ok_or("Ошибка при извлечении max_num")?;
+    let max_repeats = (packed_header >> 16).to_u16().ok_or("Ошибка при извлечении max_repeats")?;
+
     let mut result = Vec::new();
 
+    polynomial = s_quotient;
+
+    let v_base = base(max_num, max_repeats);
+    //println!("de v_base {}",v_base);
+    
     while polynomial > BigUint::zero() {
-        let (quotient, remainder) = polynomial.div_rem_euclid(&base);
-        let packed_num = remainder.to_u32().unwrap();
+        let (quotient, remainder) = polynomial.div_rem_euclid(&BigUint::from(v_base));
+        let packed_batch = remainder.to_u32().ok_or("Ошибка при извлечении числа из полинома")?;
 
-        // Извлекаем исходное число и количество повторений
-        let num = packed_num % (VAL_BASE+1);
-        let count = packed_num / (VAL_BASE+1);
+        let (num, count) = unpack(packed_batch, max_num);
 
-        if num < 1 || num > VAL_BASE {
-            panic!("Некорректное значение коэффициента");
+        //print!("de {} {},", count, num);
+
+        if num < 1 || num > max_num {
+            return Err("Некорректное значение коэффициента ".to_string()+&num.to_string());
         }
 
-        // Добавляем число в результат, учитывая количество повторений
         for _ in 0..count {
             result.push(num);
         }
+        //println!("");
 
         polynomial = quotient;
     }
 
-    result
+    Ok(result)
 }
 
+
 // Тест: проверка простого списка
-fn test_simple_case(_size: usize) -> (Vec<u32>, Vec<u32>, bool) {
+fn test_simple_case(_size: usize) -> (Vec<u16>, Vec<u16>, bool) {
     let input = vec![1, 1, 2, 2, 2, 3];
     let encoded = serialize_list(&input);
-    let decoded = deserialize_list(&encoded);
-    (input.clone(), decoded.clone(), decoded == input)
+    let mut s_input = input.clone();
+    s_input.sort();
+    s_input.reverse();
+    let decoded = deserialize_list(&encoded).unwrap();
+    (input.clone(), decoded.clone(), decoded == s_input)
 }
 
 // Тест: проверка списка с однозначными числами
-fn test_all_single_digits(size: usize) -> (Vec<u32>, Vec<u32>, bool) {
+fn test_all_single_digits(size: usize) -> (Vec<u16>, Vec<u16>, bool) {
     let input = (1..=9).cycle().take(size).collect::<Vec<_>>();
     let encoded = serialize_list(&input);
-    let decoded = deserialize_list(&encoded);
-    (input.clone(), decoded.clone(), decoded == input)
+    let mut s_input = input.clone();
+    s_input.sort();
+    s_input.reverse();
+    let decoded = deserialize_list(&encoded).unwrap();
+    (input.clone(), decoded.clone(), decoded == s_input)
 }
 
 // Тест: проверка списка с двузначными числами
-fn test_all_two_digits(size: usize) -> (Vec<u32>, Vec<u32>, bool) {
+fn test_all_two_digits(size: usize) -> (Vec<u16>, Vec<u16>, bool) {
     let input = (10..=99).cycle().take(size).collect::<Vec<_>>();
     let encoded = serialize_list(&input);
-    let decoded = deserialize_list(&encoded);
-    (input.clone(), decoded.clone(), decoded == input)
+    let mut s_input = input.clone();
+    s_input.sort();
+    s_input.reverse();
+    let decoded = deserialize_list(&encoded).unwrap();
+    (input.clone(), decoded.clone(), decoded == s_input)
 }
 
 // Тест: проверка списка с трёхзначными числами
-fn test_all_three_digits(size: usize) -> (Vec<u32>, Vec<u32>, bool) {
+fn test_all_three_digits(size: usize) -> (Vec<u16>, Vec<u16>, bool) {
     let input = (100..=300).cycle().take(size).collect::<Vec<_>>();
     let encoded = serialize_list(&input);
-    let decoded = deserialize_list(&encoded);
-    (input.clone(), decoded.clone(), decoded == input)
+    let mut s_input = input.clone();
+    s_input.sort();
+    s_input.reverse();
+    let decoded = deserialize_list(&encoded).unwrap();
+    (input.clone(), decoded.clone(), decoded == s_input)
 }
 
 // Тест: проверка списка, где каждое число повторяется 3 раза
-fn test_three_repeats_each(_size: usize) -> (Vec<u32>, Vec<u32>, bool) {
-
+fn test_three_repeats_each(_size: usize) -> (Vec<u16>, Vec<u16>, bool) {
     let input = (1..=VAL_BASE)
         .flat_map(|x| vec![x; 3])
         .collect::<Vec<_>>();
 
-    let encoded = std::panic::catch_unwind(|| serialize_list(&input))
-        .unwrap_or_else(|_| "invalid".to_string());
-
-    let decoded = std::panic::catch_unwind(|| deserialize_list(&encoded))
-        .unwrap_or_default();
-
-    (input.clone(), decoded.clone(), decoded == input)
+    let encoded = serialize_list(&input);
+    let mut s_input = input.clone();
+    s_input.sort();
+    s_input.reverse();
+    let decoded = deserialize_list(&encoded).unwrap();
+    (input.clone(), decoded.clone(), decoded == s_input)
 }
 
 // Тест: проверка случайного списка чисел
-fn test_random_lists(size: usize) -> (Vec<u32>, Vec<u32>, bool) {
-    println!("Input size: {}", size);
-    let mut rng: rand::prelude::ThreadRng = rand::thread_rng();
-
-    let pool: Vec<u32> = (1..=VAL_BASE).collect();
-    let mut input: Vec<u32> = Vec::<u32>::new();
-
-    let range = 1..=size;
-    range.for_each(|_|{ input.push(pool.choose(&mut rng).unwrap().to_u32().expect("REASON")); } );
+fn test_random_lists(size: usize) -> (Vec<u16>, Vec<u16>, bool) {
+    let mut rng = rand::thread_rng();
+    let pool: Vec<u16> = (1..=VAL_BASE).collect();
+    let input: Vec<u16> = (0..size).map(|_| *pool.choose(&mut rng).unwrap()).collect();
 
     let encoded = serialize_list(&input);
-    let decoded = deserialize_list(&encoded);
-    (input.clone(), decoded.clone(), decoded == input)
+    let mut s_input = input.clone();
+    s_input.sort();
+    s_input.reverse();
+    let decoded = deserialize_list(&encoded).unwrap();
+    (input.clone(), decoded.clone(), decoded == s_input)
 }
 
-
 // Запускает тест, выводит результаты и статистику
-fn run_test<F>(test_name: &str, test_func: F) where F: FnOnce() -> (Vec<u32>, Vec<u32>, bool) {
+fn run_test<F>(test_name: &str, input_size: usize, test_func: F) where F: FnOnce(usize) -> (Vec<u16>, Vec<u16>, bool) {
     let start = Instant::now();
-    let (input, decoded, _passed) = test_func();
+    let (input, decoded, passed) = test_func(input_size);
     let duration = start.elapsed();
 
     let mut sorted_input = input.clone();
     sorted_input.sort();
     sorted_input.reverse();
 
-    // Убираем пробелы в выводе массивов
     let input_str = format!("{:?}", input).replace(" ", "");
     let sorted_input_str = format!("{:?}", sorted_input).replace(" ", "");
     let decoded_str = format!("{:?}", decoded).replace(" ", "");
 
     let encoded = serialize_list(&input);
     let compression_ratio = if input.len() > 0 {
-        (100.0 * (encoded.len() as f32  / input_str.len() as f32) ) as f32
+        (100.0 * (encoded.len() as f32 / input_str.len() as f32)) as f32
     } else {
         0.0
     };
 
-    println!("Test '{}' : ", test_name);
+    println!("Test '{}':", test_name);
     println!("Raw input: {}", input_str);
     println!("Input (sorted): {}", sorted_input_str);
     println!("Encoded: {}", encoded);
     println!("Decoded: {}", decoded_str);
     println!("Compression ratio: {:.2}%", compression_ratio);
-    println!("Status: {}", if decoded == sorted_input { "PASS" } else { "FAIL" });
+    println!("Status: {}", if passed { "PASS" } else { "FAIL" });
     println!("Time: {:?}", duration);
     println!();
 }
 
 // Основная функция: запускает все тесты
 fn main() {
-    run_test("test_simple_case", || test_simple_case(0));
-    run_test("test_all_single_digits", || test_all_single_digits(9));
-    run_test("test_all_two_digits", || test_all_two_digits(90));
-    run_test("test_all_three_digits", || test_all_three_digits(201));
-    run_test("test_three_repeats_each", || test_three_repeats_each(300));
-    run_test("test_random_lists 50 ", || test_random_lists(50));
-    run_test("test_random_lists 100 ", || test_random_lists(100));
-    run_test("test_random_lists 500 ", || test_random_lists(500));
-    run_test("test_random_lists 1000 ", || test_random_lists(1000));
+    run_test("test_simple_case", 0,|_| test_simple_case(0));
+    run_test("test_all_single_digits", 9,|_| test_all_single_digits(9));
+    run_test("test_all_two_digits", 90,|_| test_all_two_digits(90));
+    run_test("test_all_three_digits", 200, |_| test_all_three_digits(200));
+    run_test("test_three_repeats_each", 300,  |_| test_three_repeats_each(300));
+    run_test("test_random_lists 50", 50,|_| test_random_lists(50));
+    run_test("test_random_lists 100", 100,|_| test_random_lists(100));
+    run_test("test_random_lists 500", 500,|_| test_random_lists(500));
+    run_test("test_random_lists 1000", 1000,|_| test_random_lists(1000));
 }
