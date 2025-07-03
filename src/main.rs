@@ -123,7 +123,7 @@ fn deserialize_list(encoded: &String) -> Result<Vec<u16>, String> {
     let bytes = base64::decode(encoded).map_err(|e| format!("Некорректное base64-представление: {}", e))?;
     let mut polynomial = BigUint::from_bytes_be(&bytes);
 
-    println!("{}",polynomial.to_string());
+    //println!("{}",polynomial.to_string());
 
     // Извлекаем заголовок
     let (s_quotient, s_remainder) = polynomial.div_rem_euclid(&BigUint::from(HEADER_BASE));
