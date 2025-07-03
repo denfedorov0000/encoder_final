@@ -3,14 +3,11 @@ use num_traits::{One, Zero, Euclid, ToPrimitive};
 use base64;
 use rand::seq::SliceRandom;
 use std::time::Instant;
-//use std::panic::{self, UnwindSafe};
 
-// Максимальное значение для чисел в списке (тесты)
-const VAL_BASE: u16 = 300;
 // Максимальное значение для заголовка
 const HEADER_BASE: u32 = 1 << 32 - 1;
 // Максимальное количество повторений одного числа
-const REPEAT_MAX_COUNT: u16 = 60000;
+const REPEAT_MAX_COUNT: u16 = 65500;
 // Максимальное значение числа в списке
 const MAX_NUM: u16 = 65500;
 
@@ -47,10 +44,12 @@ fn base(max_val: u16, max_repeats: u16) -> u32 {
     (max_val as u32 + 1) * (max_repeats as u32 + 1) + 1
 }
 
+// Упаковывает число и количество повторений в одно значение
 fn pack(num: u16, count: u16, max_num: u16) -> u32 {
     (num as u32) + (count as u32) * (max_num as u32 + 1)
 }
 
+// Распаковывает число и количество повторений из одного значения
 fn unpack(packed: u32, max_num: u16) -> (u16, u16) {
     let num = packed % (max_num as u32 + 1);
     let count = packed / (max_num as u32 + 1);
@@ -155,7 +154,6 @@ fn deserialize_list(encoded: &String) -> Result<Vec<u16>, String> {
             result.push(num);
         }
         //println!("");
-
         polynomial = quotient;
     }
 
@@ -209,6 +207,7 @@ fn test_all_three_digits(size: usize) -> (Vec<u16>, Vec<u16>, bool) {
 
 // Тест: проверка списка, где каждое число повторяется 3 раза
 fn test_three_repeats_each(_size: usize) -> (Vec<u16>, Vec<u16>, bool) {
+    let VAL_BASE = 300;
     let input = (1..=VAL_BASE)
         .flat_map(|x| vec![x; 3])
         .collect::<Vec<_>>();
@@ -224,6 +223,7 @@ fn test_three_repeats_each(_size: usize) -> (Vec<u16>, Vec<u16>, bool) {
 // Тест: проверка случайного списка чисел
 fn test_random_lists(size: usize) -> (Vec<u16>, Vec<u16>, bool) {
     let mut rng = rand::thread_rng();
+    let VAL_BASE = 300;
     let pool: Vec<u16> = (1..=VAL_BASE).collect();
     let input: Vec<u16> = (0..size).map(|_| *pool.choose(&mut rng).unwrap()).collect();
 
